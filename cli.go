@@ -3,6 +3,7 @@ package main
 
 import (
 	"fmt"
+	zmq "github.com/pebbe/zmq4"
 	"log"
 	"strconv"
 )
@@ -15,6 +16,8 @@ const (
 	CLI_PINGSCHED
 	CLI_PINGAGENT
 	CLI_PS
+	CLI_SCHEDULER
+	CLI_SCHEDLOOKUP
 	CLI_START
 	CLI_STOP
 	CLI_VERSION
@@ -29,18 +32,21 @@ func ParseCli(cmds []string) {
 
 }
 
+// parsecli is the recursive portion of the parser, should be called by ParseCli only!
 func parsecli(state int, cmds []string) {
 	var statemap = map[int]string{
-		CLI_INIT:      "CLI_INIT",
-		CLI_HELP:      "CLI_HELP",
-		CLI_KILL:      "CLI_KILL",
-		CLI_PING:      "CLI_PING",
-		CLI_PINGSCHED: "CLI_PINGSCHED",
-		CLI_PINGAGENT: "CLI_PINGAGENT",
-		CLI_PS:        "CLI_PS",
-		CLI_START:     "CLI_START",
-		CLI_STOP:      "CLI_STOP",
-		CLI_VERSION:   "CLI_VERSION",
+		CLI_INIT:        "CLI_INIT",
+		CLI_HELP:        "CLI_HELP",
+		CLI_KILL:        "CLI_KILL",
+		CLI_PING:        "CLI_PING",
+		CLI_PINGSCHED:   "CLI_PINGSCHED",
+		CLI_PINGAGENT:   "CLI_PINGAGENT",
+		CLI_PS:          "CLI_PS",
+		CLI_SCHEDULER:   "CLI_SCHEDULER",
+		CLI_SCHEDLOOKUP: "CLI_SCHEDLOOKUP",
+		CLI_START:       "CLI_START",
+		CLI_STOP:        "CLI_STOP",
+		CLI_VERSION:     "CLI_VERSION",
 	}
 	if DEBUG {
 		log.Println("parsecli(", statemap[state], ",", cmds, ")")
@@ -60,6 +66,9 @@ func parsecli(state int, cmds []string) {
 
 		case cmds[0] == "help":
 			parsecli(CLI_HELP, cmds[1:len(cmds)])
+
+		case cmds[0] == "scheduler":
+			parsecli(CLI_SCHEDULER, cmds[1:len(cmds)])
 
 		case cmds[0] == "start":
 			parsecli(CLI_START, cmds[1:len(cmds)])
@@ -106,6 +115,20 @@ func parsecli(state int, cmds []string) {
 			log.Fatalln("Usage: webtools kill <pid>, ", err.Error())
 		}
 
+	case state == CLI_SCHEDULER:
+		if len(cmds) < 1 {
+			DoHelp()
+		}
+		switch {
+		case cmds[0] == "lookup":
+			if len(cmds) == 2 {
+				DoSchedLookup(cmds[1])
+			} else {
+				DoSchedLookup(AppID)
+			}
+		default:
+			DoHelp()
+		}
 	case state == CLI_HELP:
 		DoHelp()
 
@@ -128,21 +151,26 @@ func DoHelp() {
 		"webtools command <required arguments> [optional arguments] \n" +
 		"\n" +
 		"The commands are:\n" +
-		"  help              - Display this text\n" +
-		"  kill <pid>        - Kill PID on content server under this account\n" +
-		"  ping scheduler    - Display status of scheduler\n" +
-		"  ping agent <host> - Display status of agent on host\n" +
-		"  ps                - Display processes on content server under this account\n" +
-		"  start             - Execute ~/bin/start on content server under this account\n" +
-		"  stop              - Execute ~/bin/stop on content server under this account\n" +
-		"  version           - Display the version of webtools CLI in use\n" +
+		"  help                     - Display this text\n" +
+		"  kill <pid>               - Kill PID on content server under this account\n" +
+		"  ping scheduler           - Display status of scheduler\n" +
+		"  ping agent <host>        - Display status of agent on host\n" +
+		"  ps                       - Display processes on content server under this account\n" +
+		"  scheduler lookup [Appid] - Query scheduler for agent address of App\n" +
+		"  start                    - Execute ~/bin/start on content server under this account\n" +
+		"  stop                     - Execute ~/bin/stop on content server under this account\n" +
+		"  version                  - Display the version of webtools CLI in use\n" +
 		"\n" +
 		"Environment variables that affect webtools operation, default is [value]:\n" +
 		"WT_DEBUG            - Set to 1 to enable debugging output [0]\n" +
+		"WT_DEBUGLVL         - Values between 0 (default) and 4 (very verbose)\n" +
 		"WT_MODE             - Comma delimited list of services to offer, values include:\n" +
 		"                      scheduler, agent\n" +
-		"WT_SCHED            - Connection string to Webtools scheduler [localhost]\n" +
+		"WT_SCHED            - Connection string to Webtools scheduler [tcp://localhost:9912]\n" +
 		"WT_APPID            - Application identifier [current username]\n" +
+		"WT_SCHED_DBPATH     - Path to scheduler DB json file\n" +
+		"                      [/usr/local/etc/webtools/scheduler.json\n" +
+		"WT_SCHED_LISTENER   - Listen string for ZMQ [tcp://*:9912]\n" +
 		"\n")
 }
 
@@ -155,6 +183,12 @@ func DoPingAgent(host string) {
 func DoPingSched() {
 	if DEBUG {
 		log.Println("DoPingSched()")
+	}
+	ok, err := SchedulerPing()
+	if ok {
+		fmt.Println("Scheduler is alive.")
+	} else {
+		fmt.Println("Scheduler is not responding. [", err.Error(), "]")
 	}
 }
 
@@ -185,8 +219,24 @@ func DoStop() {
 
 }
 
+func DoSchedLookup(appid string) {
+	if DEBUG {
+		log.Println("DoSchedLookup()")
+	}
+
+	addr, err := SchedulerReqLookup(appid)
+	if err != nil {
+		fmt.Printf("Scheduler lookup failed for AppID = %s: %s\n", appid, err.Error())
+	} else {
+		fmt.Printf("The agent for AppID=%s is at %s\n", appid, addr)
+	}
+
+}
+
 func DoVersion() {
 
 	fmt.Println("Webtools Version: ", Version)
+	maj, min, patch := zmq.Version()
+	fmt.Printf("0MQ Version: %d.%d.%d\n", maj, min, patch)
 
 }
