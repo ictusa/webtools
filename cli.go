@@ -9,102 +9,102 @@ import (
 )
 
 const (
-	CLI_INIT = iota
-	CLI_HELP
-	CLI_KILL
-	CLI_PING
-	CLI_PINGSCHED
-	CLI_PINGAGENT
-	CLI_PS
-	CLI_SCHEDULER
-	CLI_SCHEDLOOKUP
-	CLI_START
-	CLI_STOP
-	CLI_VERSION
+	CliInit = iota
+	CliHelp
+	CliKill
+	CliPing
+	CliPingSched
+	CliPingAgent
+	CliPs
+	CliScheduler
+	CliSchedulerLookup
+	CliStart
+	CliStop
+	CliVersion
 )
 
 // ParseCli implements a very naive parser for command line arguments.
 func ParseCli(cmds []string) {
-	if DEBUG {
+	if config.Debug {
 		log.Println("ParseCli(", cmds, ")")
 	}
-	parsecli(CLI_INIT, cmds)
+	parsecli(CliInit, cmds)
 
 }
 
 // parsecli is the recursive portion of the parser, should be called by ParseCli only!
 func parsecli(state int, cmds []string) {
 	var statemap = map[int]string{
-		CLI_INIT:        "CLI_INIT",
-		CLI_HELP:        "CLI_HELP",
-		CLI_KILL:        "CLI_KILL",
-		CLI_PING:        "CLI_PING",
-		CLI_PINGSCHED:   "CLI_PINGSCHED",
-		CLI_PINGAGENT:   "CLI_PINGAGENT",
-		CLI_PS:          "CLI_PS",
-		CLI_SCHEDULER:   "CLI_SCHEDULER",
-		CLI_SCHEDLOOKUP: "CLI_SCHEDLOOKUP",
-		CLI_START:       "CLI_START",
-		CLI_STOP:        "CLI_STOP",
-		CLI_VERSION:     "CLI_VERSION",
+		CliInit:            "CliInit",
+		CliHelp:            "CliHelp",
+		CliKill:            "CliKill",
+		CliPing:            "CliPing",
+		CliPingSched:       "CliPingSched",
+		CliPingAgent:       "CliPingAgent",
+		CliPs:              "CliPs",
+		CliScheduler:       "CliScheduler",
+		CliSchedulerLookup: "CliSchedulerLookup",
+		CliStart:           "CliStart",
+		CliStop:            "CliStop",
+		CliVersion:         "CliVersion",
 	}
-	if DEBUG {
+	if config.Debug {
 		log.Println("parsecli(", statemap[state], ",", cmds, ")")
 	}
 	switch {
-	case state == CLI_INIT:
+	case state == CliInit:
 
 		switch {
 		case cmds[0] == "version":
-			parsecli(CLI_VERSION, cmds[1:len(cmds)])
+			parsecli(CliVersion, cmds[1:len(cmds)])
 
 		case cmds[0] == "ping":
-			parsecli(CLI_PING, cmds[1:len(cmds)])
+			parsecli(CliPing, cmds[1:len(cmds)])
 
 		case cmds[0] == "kill":
-			parsecli(CLI_KILL, cmds[1:len(cmds)])
+			parsecli(CliKill, cmds[1:len(cmds)])
 
 		case cmds[0] == "help":
-			parsecli(CLI_HELP, cmds[1:len(cmds)])
+			parsecli(CliHelp, cmds[1:len(cmds)])
 
 		case cmds[0] == "scheduler":
-			parsecli(CLI_SCHEDULER, cmds[1:len(cmds)])
+			parsecli(CliScheduler, cmds[1:len(cmds)])
 
 		case cmds[0] == "start":
-			parsecli(CLI_START, cmds[1:len(cmds)])
+			parsecli(CliStart, cmds[1:len(cmds)])
 
 		case cmds[0] == "stop":
-			parsecli(CLI_STOP, cmds[1:len(cmds)])
+			parsecli(CliStop, cmds[1:len(cmds)])
 
 		case cmds[0] == "ps":
-			parsecli(CLI_PS, cmds[1:len(cmds)])
+			parsecli(CliPs, cmds[1:len(cmds)])
 
 		default:
 			fmt.Println("webtools: unknown command:", cmds[0])
 			fmt.Println("Run 'webtools help' for usage information.")
-		} // state == CLI_INIT
+		} // state == CliInit
 
-	case state == CLI_VERSION:
+	case state == CliVersion:
 		DoVersion()
 
-	case state == CLI_PING:
+	case state == CliPing:
 		switch {
 		case cmds[0] == "agent":
-			parsecli(CLI_PINGAGENT, cmds[1:len(cmds)])
+			parsecli(CliPingAgent, cmds[1:len(cmds)])
 		case cmds[0] == "scheduler":
-			parsecli(CLI_PINGSCHED, cmds[1:len(cmds)])
+			parsecli(CliPingSched, cmds[1:len(cmds)])
 
-		} // state == CLI_PING
+		} // state == CliPing
 
-	case state == CLI_PINGAGENT:
+	case state == CliPingAgent:
 		if len(cmds) != 1 {
 			log.Fatalln("Usage: webtools ping agent <hostname>")
 		}
 		DoPingAgent(cmds[0])
-	case state == CLI_PINGSCHED:
+	case state == CliPingSched:
 		DoPingSched()
 
-	case state == CLI_KILL:
+	case state == CliKill:
 		if len(cmds) != 1 {
 			log.Fatalln("Usage: webtools kill <pid>")
 		}
@@ -115,7 +115,7 @@ func parsecli(state int, cmds []string) {
 			log.Fatalln("Usage: webtools kill <pid>, ", err.Error())
 		}
 
-	case state == CLI_SCHEDULER:
+	case state == CliScheduler:
 		if len(cmds) < 1 {
 			DoHelp()
 		}
@@ -124,21 +124,21 @@ func parsecli(state int, cmds []string) {
 			if len(cmds) == 2 {
 				DoSchedLookup(cmds[1])
 			} else {
-				DoSchedLookup(AppID)
+				DoSchedLookup(config.AppId)
 			}
 		default:
 			DoHelp()
 		}
-	case state == CLI_HELP:
+	case state == CliHelp:
 		DoHelp()
 
-	case state == CLI_PS:
+	case state == CliPs:
 		DoPs()
 
-	case state == CLI_START:
+	case state == CliStart:
 		DoStart()
 
-	case state == CLI_STOP:
+	case state == CliStop:
 		DoStop()
 
 	} //state switch
@@ -162,26 +162,24 @@ func DoHelp() {
 		"  version                  - Display the version of webtools CLI in use\n" +
 		"\n" +
 		"Environment variables that affect webtools operation, default is [value]:\n" +
-		"WT_DEBUG            - Set to 1 to enable debugging output [0]\n" +
-		"WT_DEBUGLVL         - Values between 0 (default) and 4 (very verbose)\n" +
-		"WT_MODE             - Comma delimited list of services to offer, values include:\n" +
-		"                      scheduler, agent\n" +
-		"WT_SCHED            - Connection string to Webtools scheduler [tcp://localhost:9912]\n" +
+		"WT_DEBUG            - Set to true to enable debugging output [false]\n" +
+		"WT_SCHEDULERADDRESS - Connection string to Webtools scheduler [tcp://localhost:9912]\n" +
 		"WT_APPID            - Application identifier [current username]\n" +
-		"WT_SCHED_DBPATH     - Path to scheduler DB json file\n" +
+		"WT_SCHEDULERDBPATH  - Path to scheduler DB json file\n" +
 		"                      [/usr/local/etc/webtools/scheduler.json\n" +
-		"WT_SCHED_LISTENER   - Listen string for ZMQ [tcp://*:9912]\n" +
+		"WT_SCHEDULERLISTEN  - Listen string for 0MQ [tcp://*:9912]\n" +
+		"WT_AGENTLISTEN      - Listen string for 0MQ [tcp://*:9924]\n" +
 		"\n")
 }
 
 func DoPingAgent(host string) {
-	if DEBUG {
+	if config.Debug {
 		log.Println("DoPingAgent(", host, ")")
 	}
 }
 
 func DoPingSched() {
-	if DEBUG {
+	if config.Debug {
 		log.Println("DoPingSched()")
 	}
 	ok, err := SchedulerPing()
@@ -193,34 +191,34 @@ func DoPingSched() {
 }
 
 func DoKill(pid int) {
-	if DEBUG {
+	if config.Debug {
 		log.Println("DoKill(", pid, ")")
 	}
 }
 
 func DoPs() {
-	if DEBUG {
+	if config.Debug {
 		log.Println("DoPs()")
 	}
 
 }
 
 func DoStart() {
-	if DEBUG {
+	if config.Debug {
 		log.Println("DoStart()")
 	}
 
 }
 
 func DoStop() {
-	if DEBUG {
+	if config.Debug {
 		log.Println("DoStop()")
 	}
 
 }
 
 func DoSchedLookup(appid string) {
-	if DEBUG {
+	if config.Debug {
 		log.Println("DoSchedLookup()")
 	}
 

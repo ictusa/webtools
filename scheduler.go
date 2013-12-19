@@ -19,12 +19,6 @@ var schedulerDbMutex sync.Mutex
 //SchedulerDB maps AppID to Agent connect string
 var SchedulerDB map[string]string
 
-//schedulerDbPath is the complete path to the json file for the scheduler db
-var schedulerDbPath string
-
-//SchedulerListen is the 0MQ connection string for the scheduler to listen on
-var SchedulerListen string
-
 //SchedLookup, SchedReply, SchedSet, SchedOk, SchedError, SchedUnknown, SchedNotFound, SchedPing
 //SchedPingReply are constants used in request specific actions from the scheduler by the CLI
 //in 0MQ messages.
@@ -51,24 +45,11 @@ type SchedulerMsg struct {
 
 func init() {
 	SchedulerDB = make(map[string]string)
-
-	if val := os.Getenv("WT_SCHED_DBPATH"); val != "" {
-		schedulerDbPath = val
-	} else {
-		schedulerDbPath = "/usr/local/etc/webtools/scheduler.json"
-	}
-
-	if val := os.Getenv("WT_SCHED_LISTENER"); val != "" {
-		SchedulerListen = val
-	} else {
-		SchedulerListen = "tcp://*:9912"
-	}
-
 }
 
 //LoadSchedulerDB will load the SchedulerDB map from the specified JSON file.
 func LoadSchedulerDB(path string) error {
-	if DEBUG {
+	if config.Debug {
 		log.Println("LoadSchedulerDB(", path, ")")
 	}
 	db, openErr := os.Open(path)
@@ -88,7 +69,7 @@ func LoadSchedulerDB(path string) error {
 	if readErr != nil {
 		return readErr
 	}
-	if DEBUG == true && DEBUGLVL > 3 {
+	if config.Debug == true && config.DebugLvl > 3 {
 		log.Print(in)
 	}
 
@@ -114,7 +95,7 @@ func SchedulerSigHUPHandler() {
 	for {
 		<-c //block until we receive SIGHUP
 		log.Println("Reloading SchedulerDB SIGHUP received.")
-		LoadSchedulerDB(schedulerDbPath)
+		LoadSchedulerDB(config.SchedulerDbPath)
 	}
 }
 
@@ -122,11 +103,11 @@ func SchedulerSigHUPHandler() {
 //the 0MQ listener, and responds to queries. It is intended to be run inside a go routine, it
 //does not return to its caller.
 func SchedulerService() {
-	if DEBUG {
+	if config.Debug {
 		log.Println("SchedulerService()")
 	}
 
-	if err := LoadSchedulerDB(schedulerDbPath); err != nil {
+	if err := LoadSchedulerDB(config.SchedulerDbPath); err != nil {
 		log.Fatalln("LoadSchedulerDB: ", err)
 	}
 
@@ -136,17 +117,17 @@ func SchedulerService() {
 	}
 	defer responder.Close()
 
-	if err := responder.Bind(SchedulerListen); err != nil {
-		log.Fatalln("SchedulerService():responder.Bind(", SchedulerListen, ")", err.Error())
+	if err := responder.Bind(config.SchedulerListen); err != nil {
+		log.Fatalln("SchedulerService():responder.Bind(", config.SchedulerListen, ")", err.Error())
 	}
 
 	for {
 		msg, err := responder.RecvBytes(0) //Flags for Recv?
-		if DEBUG {
+		if config.Debug {
 			log.Println("SchedulerService() 0MQ Recv:", bytes.NewBuffer(msg).String())
 		}
 
-		if DEBUG && err != nil {
+		if config.Debug && err != nil {
 			log.Println("SchedulerService() 0MQ Recv error: ", err.Error())
 		}
 
@@ -184,19 +165,19 @@ func SchedulerService() {
 //SchedulerReqLookup sends a LOOKUP request to the scheduler defined in WT_SCHED env variable.
 //Returns the agent string on success, and "" with an error on failure. Uses a 1 second timeout.
 func SchedulerReqLookup(appid string) (string, error) {
-	if DEBUG {
-		log.Printf("SchedulerReqLookup(%s) to %s\n", appid, SchedulerAddress)
+	if config.Debug {
+		log.Printf("SchedulerReqLookup(%s) to %s\n", appid, config.SchedulerAddress)
 	}
 	requester, err := zmq.NewSocket(zmq.REQ)
 	if err != nil {
 		return "", err
 	}
-	if DEBUG {
+	if config.Debug {
 		log.Println("SchedulerReqLookup() 0MQ NewSocket(zmq.REQ) ok")
 	}
 	defer requester.Close()
 
-	connErr := requester.Connect(SchedulerAddress)
+	connErr := requester.Connect(config.SchedulerAddress)
 	if connErr != nil {
 		return "", connErr
 	}
@@ -215,7 +196,7 @@ func SchedulerReqLookup(appid string) (string, error) {
 		log.Println("SchedulerReqLookup() 0MQ SendBytes:", sendErr)
 		return "", sendErr
 	}
-	if DEBUG {
+	if config.Debug {
 		log.Println("SchedulerReqLookup() 0MQ SendBytes sent ", byteSent)
 	}
 	//Poll socket for a reply, with a timeout
@@ -230,7 +211,7 @@ func SchedulerReqLookup(appid string) (string, error) {
 		if zmqErr != nil {
 			return "", zmqErr
 		}
-		if DEBUG {
+		if config.Debug {
 			log.Println("SchedulerReqLookup() 0MQ Recv msg:", bytes.NewBuffer(reply).String())
 		}
 
@@ -258,20 +239,20 @@ func SchedulerReqLookup(appid string) (string, error) {
 //SchedulerPing sends a PING request to the scheduler defined in WT_SCHED env variable. Returns true
 //on success, and false with an error on failure. Uses a 1 second timeout.
 func SchedulerPing() (bool, error) {
-	if DEBUG {
-		log.Println("SchedulerPing() to ", SchedulerAddress)
+	if config.Debug {
+		log.Println("SchedulerPing() to ", config.SchedulerAddress)
 	}
 
 	requester, err := zmq.NewSocket(zmq.REQ)
 	if err != nil {
 		return false, err
 	}
-	if DEBUG {
+	if config.Debug {
 		log.Println("SchedulerPing() 0MQ NewSocket(zmq.REQ) ok")
 	}
 	defer requester.Close()
 
-	connErr := requester.Connect(SchedulerAddress)
+	connErr := requester.Connect(config.SchedulerAddress)
 	if connErr != nil {
 		return false, connErr
 	}
@@ -290,7 +271,7 @@ func SchedulerPing() (bool, error) {
 	if sendErr != nil {
 		log.Fatalln("SchedulerPing() 0MQ SendBytes:", sendErr.Error())
 	}
-	if DEBUG {
+	if config.Debug {
 		log.Println("SchedulerPing() 0MQ SendBytes sent ", byteSent)
 	}
 
@@ -306,7 +287,7 @@ func SchedulerPing() (bool, error) {
 		if zmqErr != nil {
 			return false, zmqErr
 		}
-		if DEBUG {
+		if config.Debug {
 			log.Println("SchedulerPing() 0MQ Recv msg:", bytes.NewBuffer(reply).String())
 		}
 
