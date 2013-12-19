@@ -10,9 +10,16 @@ import (
 	// "strings"
 )
 
+//DEBUG enables debug logging to STDOUT
 var DEBUG bool
+
+//DEBUGLVL should be ripped out.
 var DEBUGLVL int
+
+//SchedulerAddress is the 0MQ connect string the scheduler will be listening at.
 var SchedulerAddress string
+
+//AppID represents the Application ID, usually the name of the Unix account assigned to the application
 var AppID string
 
 // Fetch basic configuration variables.

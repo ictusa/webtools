@@ -1,3 +1,4 @@
 package main
 
-var Version string = "0.0.1"
+//Version represents the current version of webTools.
+var Version = "0.0.1"

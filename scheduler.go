@@ -14,23 +14,34 @@ import (
 	"time"
 )
 
-var SchedulerDBMutex sync.Mutex
+var schedulerDbMutex sync.Mutex
+
+//SchedulerDB maps AppID to Agent connect string
 var SchedulerDB map[string]string
-var SchedulerDBPath string
+
+//schedulerDbPath is the complete path to the json file for the scheduler db
+var schedulerDbPath string
+
+//SchedulerListen is the 0MQ connection string for the scheduler to listen on
 var SchedulerListen string
 
+//SchedLookup, SchedReply, SchedSet, SchedOk, SchedError, SchedUnknown, SchedNotFound, SchedPing
+//SchedPingReply are constants used in request specific actions from the scheduler by the CLI
+//in 0MQ messages.
 const (
-	SCHED_LOOKUP = iota
-	SCHED_REPLY
-	SCHED_SET
-	SCHED_OK
-	SCHED_ERROR
-	SCHED_UNKNOWN
-	SCHED_NOTFOUND
-	SCHED_PING
-	SCHED_PINGREPLY
+	SchedLookup = iota
+	SchedReply
+	SchedSet
+	SchedOk
+	SchedError
+	SchedUnknown
+	SchedNotFound
+	SchedPing
+	SchedPingReply
 )
 
+//SchedulerMsg is a struct that represents requests and responses between the scheduler and CLI.
+//They are sent JSON encoded as 0MQ messages.
 type SchedulerMsg struct {
 	MsgType int
 	AppID   string
@@ -42,9 +53,9 @@ func init() {
 	SchedulerDB = make(map[string]string)
 
 	if val := os.Getenv("WT_SCHED_DBPATH"); val != "" {
-		SchedulerDBPath = val
+		schedulerDbPath = val
 	} else {
-		SchedulerDBPath = "/usr/local/etc/webtools/scheduler.json"
+		schedulerDbPath = "/usr/local/etc/webtools/scheduler.json"
 	}
 
 	if val := os.Getenv("WT_SCHED_LISTENER"); val != "" {
@@ -55,7 +66,7 @@ func init() {
 
 }
 
-//LoadSchedulerDB(path) will load the SchedulerDB map from the specified JSON file.
+//LoadSchedulerDB will load the SchedulerDB map from the specified JSON file.
 func LoadSchedulerDB(path string) error {
 	if DEBUG {
 		log.Println("LoadSchedulerDB(", path, ")")
@@ -71,7 +82,7 @@ func LoadSchedulerDB(path string) error {
 		return statErr
 	}
 
-	var in []byte = make([]byte, info.Size())
+	var in = make([]byte, info.Size())
 
 	_, readErr := db.Read(in)
 	if readErr != nil {
@@ -82,26 +93,28 @@ func LoadSchedulerDB(path string) error {
 	}
 
 	// NB: maps in Go are not safe to manipulate concurrently.
-	SchedulerDBMutex.Lock()
-	defer SchedulerDBMutex.Unlock()
+	schedulerDbMutex.Lock()
+	defer schedulerDbMutex.Unlock()
 	marshalErr := json.Unmarshal(in, &SchedulerDB)
 	return marshalErr
 }
 
+//SchedulerLookup is a wrapper around the SchedulerDB map to synchronize access
 func SchedulerLookup(appid string) (string, bool) {
-	SchedulerDBMutex.Lock()
-	defer SchedulerDBMutex.Unlock()
+	schedulerDbMutex.Lock()
+	defer schedulerDbMutex.Unlock()
 	agent, ok := SchedulerDB[appid]
 	return agent, ok
 }
 
+//SchedulerSigHUPHandler causes the SchedulerDB to be reloaded on receipt of SIGHUP. Should be run as a separate go routine.
 func SchedulerSigHUPHandler() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGHUP)
 	for {
 		<-c //block until we receive SIGHUP
 		log.Println("Reloading SchedulerDB SIGHUP received.")
-		LoadSchedulerDB(SchedulerDBPath)
+		LoadSchedulerDB(schedulerDbPath)
 	}
 }
 
@@ -113,7 +126,7 @@ func SchedulerService() {
 		log.Println("SchedulerService()")
 	}
 
-	if err := LoadSchedulerDB(SchedulerDBPath); err != nil {
+	if err := LoadSchedulerDB(schedulerDbPath); err != nil {
 		log.Fatalln("LoadSchedulerDB: ", err)
 	}
 
@@ -143,23 +156,23 @@ func SchedulerService() {
 		var Query SchedulerMsg
 		var Reply SchedulerMsg
 		if err := json.Unmarshal(msg, &Query); err != nil {
-			Reply = SchedulerMsg{SCHED_ERROR, "", "", err.Error()}
+			Reply = SchedulerMsg{SchedError, "", "", err.Error()}
 			b, _ := json.Marshal(Reply)
 			responder.SendBytes(b, 0)
 			continue
 		}
 		switch {
-		case Query.MsgType == SCHED_LOOKUP:
+		case Query.MsgType == SchedLookup:
 			agent, ok := SchedulerLookup(Query.AppID)
 			if ok == true {
-				Reply = SchedulerMsg{SCHED_REPLY, Query.AppID, agent, ""}
+				Reply = SchedulerMsg{SchedReply, Query.AppID, agent, ""}
 			} else {
-				Reply = SchedulerMsg{SCHED_NOTFOUND, Query.AppID, "", ""}
+				Reply = SchedulerMsg{SchedNotFound, Query.AppID, "", ""}
 			}
-		case Query.MsgType == SCHED_PING:
-			Reply = SchedulerMsg{SCHED_PINGREPLY, "", "", ""}
+		case Query.MsgType == SchedPing:
+			Reply = SchedulerMsg{SchedPingReply, "", "", ""}
 		default:
-			Reply = SchedulerMsg{SCHED_UNKNOWN, "", "", ""}
+			Reply = SchedulerMsg{SchedUnknown, "", "", ""}
 		}
 
 		b, _ := json.Marshal(Reply)
@@ -168,7 +181,7 @@ func SchedulerService() {
 	} //end for{}
 }
 
-//SchulderReqLookup(appid) sends a LOOKUP request to the scheduler defined in WT_SCHED env variable.
+//SchedulerReqLookup sends a LOOKUP request to the scheduler defined in WT_SCHED env variable.
 //Returns the agent string on success, and "" with an error on failure. Uses a 1 second timeout.
 func SchedulerReqLookup(appid string) (string, error) {
 	if DEBUG {
@@ -191,7 +204,7 @@ func SchedulerReqLookup(appid string) (string, error) {
 	poller := zmq.NewPoller()
 	poller.Add(requester, zmq.POLLIN)
 	var msg SchedulerMsg
-	msg = SchedulerMsg{SCHED_LOOKUP, appid, "", ""}
+	msg = SchedulerMsg{SchedLookup, appid, "", ""}
 	jsonOut, jsonErr := json.Marshal(msg)
 	if jsonErr != nil {
 		return "", jsonErr
@@ -228,16 +241,16 @@ func SchedulerReqLookup(appid string) (string, error) {
 
 		switch {
 
-		case msg.MsgType == SCHED_REPLY:
+		case msg.MsgType == SchedReply:
 			return msg.Address, nil
-		case msg.MsgType == SCHED_NOTFOUND:
-			return "", errors.New("AppID not found.")
+		case msg.MsgType == SchedNotFound:
+			return "", errors.New("AppID not found")
 		default:
 			return "", errors.New(msg.Error)
 		}
 
 	} else {
-		return "", errors.New("Timeout")
+		return "", errors.New("timeout")
 	}
 
 }
@@ -267,7 +280,7 @@ func SchedulerPing() (bool, error) {
 	poller.Add(requester, zmq.POLLIN)
 
 	var msg SchedulerMsg
-	msg = SchedulerMsg{SCHED_PING, "", "", ""}
+	msg = SchedulerMsg{SchedPing, "", "", ""}
 	jsonOut, jsonErr := json.Marshal(msg)
 	if jsonErr != nil {
 		return false, jsonErr
@@ -302,14 +315,12 @@ func SchedulerPing() (bool, error) {
 			return false, jsonErr
 		}
 
-		if msg.MsgType == SCHED_PINGREPLY {
+		if msg.MsgType == SchedPingReply {
 			return true, nil
-		} else {
-			return false, errors.New(msg.Error)
 		}
+		return false, errors.New(msg.Error)
 
-	} else {
-		return false, errors.New("Timeout")
 	}
+	return false, errors.New("timeout")
 
 }
