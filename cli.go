@@ -21,6 +21,7 @@ const (
 	CliStart
 	CliStop
 	CliVersion
+	CliService
 )
 
 // ParseCli implements a very naive parser for command line arguments.
@@ -32,7 +33,7 @@ func ParseCli(cmds []string) {
 
 }
 
-// parsecli is the recursive portion of the parser, should be called by ParseCli only!
+// parsecli is the recursive portion of the parser, should be called by ParseCli only.
 func parsecli(state int, cmds []string) {
 	var statemap = map[int]string{
 		CliInit:            "CliInit",
@@ -44,6 +45,7 @@ func parsecli(state int, cmds []string) {
 		CliPs:              "CliPs",
 		CliScheduler:       "CliScheduler",
 		CliSchedulerLookup: "CliSchedulerLookup",
+		CliService:         "CliService",
 		CliStart:           "CliStart",
 		CliStop:            "CliStop",
 		CliVersion:         "CliVersion",
@@ -69,6 +71,9 @@ func parsecli(state int, cmds []string) {
 
 		case cmds[0] == "scheduler":
 			parsecli(CliScheduler, cmds[1:len(cmds)])
+
+		case cmds[0] == "service":
+			parsecli(CliService, cmds[1:len(cmds)])
 
 		case cmds[0] == "start":
 			parsecli(CliStart, cmds[1:len(cmds)])
@@ -129,6 +134,23 @@ func parsecli(state int, cmds []string) {
 		default:
 			DoHelp()
 		}
+	case state == CliService:
+		if len(cmds) < 1 {
+			DoHelp()
+			return
+		}
+		switch {
+		case cmds[0] == "agent":
+			DoStartAgent()
+		case cmds[0] == "scheduler":
+			DoStartScheduler()
+		default:
+			DoHelp()
+			return
+		}
+		if len(cmds) > 1 {
+			parsecli(CliService, cmds[1:len(cmds)])
+		}
 	case state == CliHelp:
 		DoHelp()
 
@@ -143,7 +165,16 @@ func parsecli(state int, cmds []string) {
 
 	} //state switch
 }
+func DoStartAgent() {
+	ServicesRunning = true
+	go AgentService()
+}
+func DoStartScheduler() {
+	go SchedulerSigHUPHandler()
+	go SchedulerService()
+	ServicesRunning = true
 
+}
 func DoHelp() {
 	fmt.Print("Webtools is an automation tool for use by developers to run commands remotely on content servers.\n" +
 		"\n" +
@@ -151,15 +182,16 @@ func DoHelp() {
 		"webtools command <required arguments> [optional arguments] \n" +
 		"\n" +
 		"The commands are:\n" +
-		"  help                     - Display this text\n" +
-		"  kill <pid>               - Kill PID on content server under this account\n" +
-		"  ping scheduler           - Display status of scheduler\n" +
-		"  ping agent <host>        - Display status of agent on host\n" +
-		"  ps                       - Display processes on content server under this account\n" +
-		"  scheduler lookup [Appid] - Query scheduler for agent address of App\n" +
-		"  start                    - Execute ~/bin/start on content server under this account\n" +
-		"  stop                     - Execute ~/bin/stop on content server under this account\n" +
-		"  version                  - Display the version of webtools CLI in use\n" +
+		"  help                      - Display this text\n" +
+		"  kill <pid>                - Kill PID on content server\n" +
+		"  ping scheduler            - Display status of scheduler\n" +
+		"  ping agent <agent addr>   - Display status of agent at connect string\n" +
+		"  ps                        - Display processes on content server \n" +
+		"  scheduler lookup [Appid]  - Query scheduler for agent address of App\n" +
+		"  service <agent|scheduler> - Start agent or scheduler or both\n" +
+		"  start                     - Execute ~/bin/start on content server \n" +
+		"  stop                      - Execute ~/bin/stop on content server \n" +
+		"  version                   - Display the version of webtools CLI in use\n" +
 		"\n" +
 		"Environment variables that affect webtools operation, default is [value]:\n" +
 		"WT_DEBUG            - Set to true to enable debugging output [false]\n" +
@@ -169,12 +201,19 @@ func DoHelp() {
 		"                      [/usr/local/etc/webtools/scheduler.json\n" +
 		"WT_SCHEDULERLISTEN  - Listen string for 0MQ [tcp://*:9912]\n" +
 		"WT_AGENTLISTEN      - Listen string for 0MQ [tcp://*:9924]\n" +
+		"WT_AGENTTIMEOUT     - Wait how long for agent response [30]\n" +
 		"\n")
 }
 
 func DoPingAgent(host string) {
 	if config.Debug {
 		log.Println("DoPingAgent(", host, ")")
+	}
+	ok, err := AgentPing(host)
+	if ok {
+		fmt.Println("Agent is alive.")
+	} else {
+		fmt.Println("Agent is not responding. [", err.Error(), "]")
 	}
 }
 
@@ -194,12 +233,28 @@ func DoKill(pid int) {
 	if config.Debug {
 		log.Println("DoKill(", pid, ")")
 	}
+	output, err := AgentReqKill(config.AppId, pid)
+	if err != nil {
+		fmt.Println("kill failed.")
+		fmt.Println(output)
+		fmt.Println(err)
+		return
+	}
+	fmt.Println(output)
 }
 
 func DoPs() {
 	if config.Debug {
 		log.Println("DoPs()")
 	}
+	output, err := AgentReqPs(config.AppId)
+	if err != nil {
+		fmt.Println("ps failed.")
+		fmt.Println(output)
+		fmt.Println(err)
+		return
+	}
+	fmt.Println(output)
 
 }
 
@@ -207,6 +262,15 @@ func DoStart() {
 	if config.Debug {
 		log.Println("DoStart()")
 	}
+	output, err := AgentReqStartApp(config.AppId)
+	if err != nil {
+		fmt.Println("App start failed.")
+		fmt.Println(output)
+		fmt.Println(err)
+		return
+	}
+	fmt.Println("App start ok.")
+	fmt.Println(output)
 
 }
 
@@ -214,6 +278,15 @@ func DoStop() {
 	if config.Debug {
 		log.Println("DoStop()")
 	}
+	output, err := AgentReqStopApp(config.AppId)
+	if err != nil {
+		fmt.Println("App stop failed.")
+		fmt.Println(output)
+		fmt.Println(err)
+		return
+	}
+	fmt.Println("App stop ok.")
+	fmt.Println(output)
 
 }
 
