@@ -1,0 +1,61 @@
+WebTools Documentation DRAFT
+Environment Variables
+
+WT_DEBUG
+Version: >0.0.1
+Type: Boolean
+Default: false
+If set to "true" then debugging output will be sent to STDOUT.
+
+WT_DEBUGLVL
+Version: =0.0.1
+Type: Integer
+Default: 0
+If set to 3 or higher and WT_DEBUG=="true" extra debugging output will be generated 
+to STDOUT.
+
+WT_SCHEDULERADDRESS
+Version: >0.0.1
+Type: string
+Default:  "tcp://localhost:9912"
+A ZeroMQ connection string, defines where webtools will try to contact the scheduler.
+
+WT_APPID
+Version: >0.0.1
+Type: string
+Default: Username of the user running the webtools CLI.
+Defines which AppID is being referenced by the webtools CLI. Some CLI commands will accept an optional AppID as an argument.
+
+WT_SCHEDULERDBPATH
+Version: >0.0.1
+Type: string
+Default: "/usr/local/etc/webtools/scheduler.json"
+The fully qualified path to the scheduler database file. As of version 0.0.1 this is a serialized JSON representation of map[string]string where the key is the AppID and the value is a ZeroMQ connection string for the agent handling that app.
+
+WT_SCHEDULERLISTEN
+Version: >0.0.1
+Type: string
+Default: "tcp://*:9912"
+A ZeroMQ connection string, used to define where the Scheduler will listen for connections.
+
+WT_AGENTLISTEN
+Version: >0.0.1
+Type: string
+Default: "tcp://*:9924"
+A ZeroMQ connection string, used to define where an Agent will listen for connections.
+
+WT_AGENTTIMEOUT
+Version: >0.0.1
+Type: Integer
+Default: 30
+The timeout for a response from the Agent.
+
+WT_PASSWORDDBPATH
+Version: >0.0.2
+Type: string
+Default: "/usr/local/etc/webtools/passwords.json"
+The fully qualified path to the password database file. As of version 0.0.2 this is a serialized JSON representation of map[string]PasswordEnt. Where PasswordEnt is a struct {bcrypt'd password []byte, Roles []string, AppIDs []string}. 
+
+
+
+
