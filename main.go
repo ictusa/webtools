@@ -21,6 +21,7 @@ type Spec struct {
 	SchedulerListen  string
 	AgentListen      string
 	AgentTimeout     int64
+	PasswordDbPath   string
 }
 
 // config holds the global application configuration
@@ -35,8 +36,17 @@ func init() {
 	if uidErr != nil {
 		log.Fatal(uidErr)
 	}
-	config = Spec{false, 0, "tcp://localhost:9912", uid.Username,
-		"/usr/local/etc/webtools/scheduler.json", "tcp://*:9912", "tcp://*:9924", 30}
+	config = Spec{
+		false, //Debug
+		0,     //DebugLvl
+		"tcp://localhost:9912",                   //SchedulerAddress
+		uid.Username,                             //AppID
+		"/usr/local/etc/webtools/scheduler.json", //SchedulerDbPath
+		"tcp://*:9912",                           //SchedulerListen
+		"tcp://*:9924",                           //AgentList
+		30,                                       //AgentTimeout
+		"/usr/local/etc/webtools/passwords.json", //PasswordDbPath
+	}
 }
 
 func main() {
